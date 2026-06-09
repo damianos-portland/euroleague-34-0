@@ -1,0 +1,10 @@
+/node_modules
+/.next
+/out
+/build
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.env*
+# raw scraped seasons are reproducible via `npm run scrape`
+/data/raw
