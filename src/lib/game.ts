@@ -44,17 +44,37 @@ export function openPositions(picks: Pick[]): Position[] {
   return (["G", "F", "C"] as Position[]).filter((p) => f[p] < NEED[p]);
 }
 
-function clubErasWithOpen(code: string, open: Position[]): string[] {
-  const club = clubByCodeFn(code);
-  if (!club) return [];
-  return ERAS.filter((e) => {
-    const ce = club.eras[e.id];
-    return ce && open.some((p) => ce.pos[p] > 0);
-  }).map((e) => e.id);
+function pickedCodes(picks: Pick[]): Set<string> {
+  return new Set(picks.map((p) => p.card.code));
 }
 
-function eligibleClubs(open: Position[]) {
-  return CLUBS.filter((c) => clubErasWithOpen(c.code, open).length > 0);
+// unpicked players at a club+era whose position still has a free slot
+function availableAt(
+  code: string,
+  eraId: string,
+  open: Position[],
+  picked: Set<string>
+): PlayerCard[] {
+  const openSet = new Set(open);
+  return playersForClubEra(code, eraId).filter(
+    (c) => openSet.has(c.position) && !picked.has(c.code)
+  );
+}
+
+function clubErasWithOpen(
+  code: string,
+  open: Position[],
+  picked: Set<string>
+): string[] {
+  const club = clubByCodeFn(code);
+  if (!club) return [];
+  return ERAS.filter(
+    (e) => club.eras[e.id] && availableAt(code, e.id, open, picked).length > 0
+  ).map((e) => e.id);
+}
+
+function eligibleClubs(open: Position[], picked: Set<string>) {
+  return CLUBS.filter((c) => clubErasWithOpen(c.code, open, picked).length > 0);
 }
 
 export function createDraft(mode: GameMode, seed: number): DraftState {
@@ -73,12 +93,11 @@ export function createDraft(mode: GameMode, seed: number): DraftState {
   return spinTeam(s);
 }
 
-// clubs that have a given era available with an open position
-function clubsForEra(eraId: string, open: Position[]) {
-  return CLUBS.filter((c) => {
-    const ce = c.eras[eraId];
-    return ce && open.some((p) => ce.pos[p] > 0);
-  });
+// clubs that have a given era available with an unpicked, open-position player
+function clubsForEra(eraId: string, open: Position[], picked: Set<string>) {
+  return CLUBS.filter(
+    (c) => c.eras[eraId] && availableAt(c.code, eraId, open, picked).length > 0
+  );
 }
 
 // spin a club. By default also spins a fresh era; when `keepEra` is passed the
@@ -87,10 +106,11 @@ function clubsForEra(eraId: string, open: Position[]) {
 export function spinTeam(state: DraftState, keepEra?: string): DraftState {
   if (state.round >= TOTAL_ROUNDS) return state;
   const open = openPositions(state.picks);
+  const picked = pickedCodes(state.picks);
   const rand = rngFrom(state.seed, "team", state.round, state.teamNonce);
 
   if (keepEra) {
-    const clubs = clubsForEra(keepEra, open);
+    const clubs = clubsForEra(keepEra, open, picked);
     if (clubs.length > 0) {
       const club = weightedPick(clubs, (c) => c.weight, rand());
       return { ...state, club: club.code, era: keepEra };
@@ -98,7 +118,7 @@ export function spinTeam(state: DraftState, keepEra?: string): DraftState {
     // no other club has this era + open position — fall back to a fresh spin
   }
 
-  const clubs = eligibleClubs(open);
+  const clubs = eligibleClubs(open, picked);
   const club = weightedPick(clubs, (c) => c.weight, rand());
   return spinEra({ ...state, club: club.code, era: null });
 }
@@ -107,7 +127,8 @@ export function spinTeam(state: DraftState, keepEra?: string): DraftState {
 export function spinEra(state: DraftState): DraftState {
   if (!state.club || state.round >= TOTAL_ROUNDS) return state;
   const open = openPositions(state.picks);
-  const eraIds = clubErasWithOpen(state.club, open);
+  const picked = pickedCodes(state.picks);
+  const eraIds = clubErasWithOpen(state.club, open, picked);
   const club = clubByCodeFn(state.club)!;
   const rand = rngFrom(state.seed, "era", state.round, state.club, state.eraNonce);
   const eraId = weightedPick(
@@ -136,12 +157,15 @@ export function reSpinEra(state: DraftState): DraftState {
   return spinEra({ ...state, eraNonce: state.eraNonce + 1, eraRespinsLeft: state.eraRespinsLeft - 1 });
 }
 
-// players for the current club+era whose position still has a free slot
+// players for the current club+era whose position still has a free slot and
+// who haven't already been drafted
 export function candidates(state: DraftState): PlayerCard[] {
   if (!state.club || !state.era) return [];
-  const open = new Set(openPositions(state.picks));
-  return playersForClubEra(state.club, state.era).filter((c) =>
-    open.has(c.position)
+  return availableAt(
+    state.club,
+    state.era,
+    openPositions(state.picks),
+    pickedCodes(state.picks)
   );
 }
 

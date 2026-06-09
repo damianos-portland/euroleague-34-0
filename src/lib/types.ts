@@ -11,6 +11,7 @@ export interface Era {
 
 export interface PlayerCard {
   id: string;
+  code: string; // EuroLeague person code — shared by the same player across eras
   name: string;
   era: string;
   position: Position; // official EuroLeague position: Guard / Forward / Center

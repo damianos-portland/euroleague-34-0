@@ -28,11 +28,18 @@ export function erasForClub(code: string): Era[] {
   return ERAS.filter((e) => club.eras[e.id]);
 }
 
-// best-available roster for a club within an era, sorted by overall
+// best-available roster for a club within an era, sorted by overall (memoized)
+const clubEraCache = new Map<string, PlayerCard[]>();
 export function playersForClubEra(code: string, eraId: string): PlayerCard[] {
-  return dataset.players
-    .filter((p) => p.era === eraId && p.teams.includes(code))
-    .sort((a, b) => b.overall - a.overall || b.pir - a.pir);
+  const key = `${code}|${eraId}`;
+  let list = clubEraCache.get(key);
+  if (!list) {
+    list = dataset.players
+      .filter((p) => p.era === eraId && p.teams.includes(code))
+      .sort((a, b) => b.overall - a.overall || b.pir - a.pir);
+    clubEraCache.set(key, list);
+  }
+  return list;
 }
 
 export const POSITION_LABEL: Record<Position, string> = {

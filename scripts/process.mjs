@@ -224,6 +224,7 @@ async function main() {
 
   const players = all.map((c) => ({
     id: c.id,
+    code: c.code, // EuroLeague person code — same person across eras shares it
     name: c.name,
     era: c.era,
     position: c.position,
